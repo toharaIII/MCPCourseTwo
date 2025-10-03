@@ -1,37 +1,26 @@
-import json
 import gradio as gr
-from textblob import TextBlob
+import os
 
-def sentiment_analysis(text: str) -> str:
-    """
-    Analyze the sentiment of the given text.
+from smolagents import InferenceClientModel, CodeAgent, MCPClient
 
-    Args:
-        text (str): The text to analyze
 
-    Returns:
-        str: A JSON string containing polarity, subjectivity, and assessment
-    """
-    blob = TextBlob(text)
-    sentiment = blob.sentiment
-    
-    result = {
-        "polarity": round(sentiment.polarity, 2),  # -1 (negative) to 1 (positive)
-        "subjectivity": round(sentiment.subjectivity, 2),  # 0 (objective) to 1 (subjective)
-        "assessment": "positive" if sentiment.polarity > 0 else "negative" if sentiment.polarity < 0 else "neutral"
-    }
+try:
+    mcp_client = MCPClient(
+        {"url": "https://abidlabs-mcp-tool-http.hf.space/gradio_api/mcp/sse", "transport": "sse",}
+    )
+    tools = mcp_client.get_tools()
 
-    return json.dumps(result)
+    model = InferenceClientModel(token=os.getenv("HUGGINGFACE_API_TOKEN"))
+    agent = CodeAgent(tools=[*tools], model=model, additional_authorized_imports=["json", "ast", "urllib", "base64"])
 
-# Create the Gradio interface
-demo = gr.Interface(
-    fn=sentiment_analysis,
-    inputs=gr.Textbox(placeholder="Enter text to analyze..."),
-    outputs=gr.Textbox(),  # Changed from gr.JSON() to gr.Textbox()
-    title="Text Sentiment Analysis",
-    description="Analyze the sentiment of text using TextBlob"
-)
+    demo = gr.ChatInterface(
+        fn=lambda message, history: str(agent.run(message)),
+        type="messages",
+        examples=["Analyze the sentiment of the following text 'This is awesome'"],
+        title="Agent with MCP Tools",
+        description="This is a simple agent that uses MCP tools to answer questions.",
+    )
 
-# Launch the interface and MCP server
-if __name__ == "__main__":
-    demo.launch(mcp_server=True)
+    demo.launch()
+finally:
+    mcp_client.disconnect()
